@@ -90,12 +90,22 @@
 
 - name: Install Master package
   action: "{{ ansible_pkg_mgr }} name={{ openshift.common.service_type }}-master{{ openshift_version  }} state=present"
-  when: not openshift.common.is_containerized | bool
+  when: not openshift.common.is_containerized | bool and openshift_deployment_type != "origin"
 
 - name: Pull master image
   command: >
     docker pull {{ openshift.master.master_image }}
-  when: openshift.common.is_containerized | bool
+  when: openshift.common.is_containerized | bool and openshift_deployment_type != "origin"
+
+- name: Copy the master service file
+  command: >
+    cp /origin/contrib/systemd/origin-master.service /etc/systemd/system/
+  register: install_result
+  when: openshift_deployment_type == "origin" and not openshift.common.is_containerized | bool
+
+- name: Reload origin systemd units
+  command: systemctl daemon-reload
+  when: openshift_deployment_type == "origin" and install_result  | changed 
 
 - name: Install Master docker service file
   template:
@@ -115,7 +125,7 @@
 
 - name: Reload systemd units
   command: systemctl daemon-reload
-  when: openshift.common.is_containerized | bool and install_result | changed
+  when: openshift.common.is_containerized | bool  and install_result | changed
 
 - name: Re-gather package dependent master facts
   openshift_facts:

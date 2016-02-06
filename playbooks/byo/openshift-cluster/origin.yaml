@@ -1,0 +1,65 @@
+---
+- name:  Configure rhel7 for Origin openshift
+  hosts: all
+  gather_facts: yes
+  tasks:
+
+    - name: Copy the rhel optional repo to the host
+      copy:
+        src: files/rhel_op.repo
+        dest: /etc/yum.repos.d/
+
+    - name: Install the Golang packages
+      action: "{{ ansible_pkg_mgr }} name=golang state=present"
+
+    - name: Delete the directory
+      file:
+        path: "/origin"
+        state: absent
+
+    - name: clone the origin repo
+      git: repo=https://github.com/openshift/origin.git
+       dest=/origin
+       version=master
+
+    - name: make release 
+      shell: make release
+      args:
+        chdir: /origin
+      async: 0
+
+    - name: copy the network files
+      shell: cp -f {{ item }} /usr/bin/
+      args:
+        chdir: /origin/Godeps/_workspace/src/github.com/openshift/openshift-sdn/plugins/osdn/ovs/bin/
+      with_items:
+        - openshift-sdn-ovs
+        - openshift-sdn-docker-setup.sh
+
+    - name: Copy the openshift binary 
+      shell: cp -f "{{ item }}" /usr/bin/
+      args:
+        chdir: /origin/_output/local/bin/linux/amd64
+      with_items:
+        - openshift 
+        - oc 
+
+    - name: create system link for oadm
+      file:
+        path: "{{ item }}"
+        state: link
+        src: /usr/bin/openshift
+      with_items:
+        - /usr/bin/kubectl
+        - /usr/bin/oadm
+        - /usr/bin/kube-scheduler
+        - /usr/bin/kubernetes
+        - /usr/bin/kube-controller-manager
+        - /usr/bin/kubelet
+        - /usr/bin/kube-proxy
+        - /usr/bin/kube-apiserver
+        - /usr/bin/openshift-sti-build
+        - /usr/bin/origin
+        - /usr/bin/openshift-router
+        - /usr/bin/openshift-docker-build
+        - /usr/bin/openshift-deploy

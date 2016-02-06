@@ -1,4 +1,9 @@
 ---
+- include: ../../byo/openshift-cluster/origin.yaml
+  vars_files:
+    - ../../byo/openshift-cluster/cluster_hosts.yml
+  when: deployment_type == "origin"
+
 - include: ../../common/openshift-cluster/config.yml
   vars_files:
   - ../../byo/openshift-cluster/cluster_hosts.yml

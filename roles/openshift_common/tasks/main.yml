@@ -37,7 +37,7 @@
 
 - name: Install the base package for versioning
   action: "{{ ansible_pkg_mgr }} name={{ openshift.common.service_type }}{{ openshift_version | default('') }} state=present"
-  when: not openshift.common.is_containerized | bool
+  when: not openshift.common.is_containerized | bool and openshift_deployment_type != "origin"
 
 # This invocation also updates the version facts which are necessary
 # for setting the hostname below.

@@ -38,21 +38,21 @@
 # problems because the rpms don't pin the version properly. This was fixed in 3.1 packaging.
 - name: Install Node package
   action: "{{ ansible_pkg_mgr }} name={{ openshift.common.service_type }}-node{{ openshift_version  }},tuned-profiles-{{ openshift.common.service_type }}-node{{ openshift_version  }} state=present"
-  when: not openshift.common.is_containerized | bool
+  when: not openshift.common.is_containerized | bool and openshift_deployment_type != "origin"
 
 - name: Install sdn-ovs package
   action: "{{ ansible_pkg_mgr }} name={{ openshift.common.service_type }}-sdn-ovs{{ openshift_version }} state=present"
-  when: openshift.common.use_openshift_sdn and not openshift.common.is_containerized | bool
+  when: openshift.common.use_openshift_sdn and not openshift.common.is_containerized | bool and openshift_deployment_type != "origin"
 
 - name: Pull node image
   command: >
     docker pull {{ openshift.node.node_image }}
-  when: openshift.common.is_containerized | bool
+  when: openshift.common.is_containerized | bool and openshift_deployment_type != "origin"
 
 - name: Pull OpenVSwitch image
   command: >
     docker pull {{ openshift.node.ovs_image }}
-  when: openshift.common.is_containerized | bool and openshift.common.use_openshift_sdn | bool
+  when: openshift.common.is_containerized | bool and openshift.common.use_openshift_sdn | bool 
 
 - name: Install Node docker service file
   template:
@@ -60,6 +60,43 @@
     src: openshift.docker.node.service
   register: install_node_result
   when: openshift.common.is_containerized | bool
+
+- name: Create openshift.common.data_dir for origin
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+  with_items:
+    - /usr/lib/systemd/system/docker.service.d
+    - openshift.common.data_dir
+  when: openshift_deployment_type == "origin" and not openshift.common.is_containerized | bool
+
+- name: Install OpenvSwitch package for origin
+  action: "{{ ansible_pkg_mgr }} name=openvswitch state=present"
+  when: openshift_deployment_type == "origin" and not openshift.common.is_containerized | bool
+
+- name: Copy the sdn configure file for origin
+  template:
+    src: docker-sdn-ovs.conf
+    dest: /usr/lib/systemd/system/docker.service.d/
+  when: openshift_deployment_type == "origin" and not openshift.common.is_containerized | bool
+
+
+- name: Start and enable openvswitch for origin
+  service: name=openvswitch enabled=yes state=started
+  when: openshift_deployment_type == "origin" and not openshift.common.is_containerized | bool
+
+- name: Copy the node service file
+  command: >
+    cp /origin/contrib/systemd/origin-node.service /etc/systemd/system/
+  register: install_result
+  when: openshift_deployment_type == "origin" and not openshift.common.is_containerized | bool
+
+- name: Reload origin systemd units
+  command: systemctl daemon-reload
+  when: openshift_deployment_type == "origin" and install_result  | changed 
 
 - name: Install OpenvSwitch docker service file
   template:

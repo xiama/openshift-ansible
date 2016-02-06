@@ -1,0 +1,5 @@
+[rhel-7-optioan]
+name=RHEL-7-Op
+baseurl= http://download.englab.nay.redhat.com/rel-eng/RHEL-7.2-RC-1.1/compose/Server-optional/x86_64/os/
+enabled=1
+gpgcheck=0
