@@ -1,14 +1,13 @@
 ---
-# This playbook upgrades an existing AWS cluster, leaving nodes untouched if used with an 'online' deployment type.
 # Usage:
-#  ansible-playbook playbooks/aws/openshift-cluster/upgrades/v3_0_to_v3_1/upgrade.yml -e deployment_type=online -e cluster_id=<cluster_id>
+#  ansible-playbook playbooks/aws/openshift-cluster/upgrades/v3_0_to_v3_1/upgrade.yml -e deployment_type=<deployment_type> -e cluster_id=<cluster_id>
 - include: ../../../../common/openshift-cluster/upgrades/v3_0_to_v3_1/upgrade.yml
   vars_files:
   - "{{lookup('file', '../../../../aws/openshift-cluster/vars.yml')}}"
   - "{{lookup('file', '../../../../aws/openshift-cluster/cluster_hosts.yml')}}"
   vars:
     g_ssh_user: "{{ deployment_vars[deployment_type].ssh_user }}"
-    g_sudo: "{{ deployment_vars[deployment_type].sudo }}"
+    g_sudo: "{{ deployment_vars[deployment_type].become }}"
     g_nodeonmaster: true
     openshift_cluster_id: "{{ cluster_id }}"
     openshift_debug_level: "{{ debug_level }}"

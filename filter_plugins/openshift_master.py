@@ -9,8 +9,15 @@ import sys
 import yaml
 
 from ansible import errors
-from ansible.runner.filter_plugins.core import bool as ansible_bool
+from distutils.version import LooseVersion
 
+# pylint: disable=no-name-in-module,import-error
+try:
+    # ansible-2.0
+    from ansible.runner.filter_plugins.core import bool as ansible_bool
+except ImportError:
+    # ansible-1.9.x
+    from ansible.plugins.filter.core import bool as ansible_bool
 
 class IdentityProviderBase(object):
     """ IdentityProviderBase
@@ -71,10 +78,19 @@ class IdentityProviderBase(object):
         self._allow_additional = True
 
     @staticmethod
-    def validate_idp_list(idp_list):
+    def validate_idp_list(idp_list, openshift_version, deployment_type):
         ''' validates a list of idps '''
         login_providers = [x.name for x in idp_list if x.login]
+
+        multiple_logins_unsupported = False
         if len(login_providers) > 1:
+            if deployment_type in ['enterprise', 'online', 'atomic-enterprise', 'openshift-enterprise']:
+                if LooseVersion(openshift_version) < LooseVersion('3.2'):
+                    multiple_logins_unsupported = True
+            if deployment_type in ['origin']:
+                if LooseVersion(openshift_version) < LooseVersion('1.2'):
+                    multiple_logins_unsupported = True
+        if multiple_logins_unsupported:
             raise errors.AnsibleFilterError("|failed multiple providers are "
                                             "not allowed for login. login "
                                             "providers: {0}".format(', '.join(login_providers)))
@@ -455,7 +471,7 @@ class FilterModule(object):
     ''' Custom ansible filters for use by the openshift_master role'''
 
     @staticmethod
-    def translate_idps(idps, api_version):
+    def translate_idps(idps, api_version, openshift_version, deployment_type):
         ''' Translates a list of dictionaries into a valid identityProviders config '''
         idp_list = []
 
@@ -472,7 +488,7 @@ class FilterModule(object):
             idp_list.append(idp_inst)
 
 
-        IdentityProviderBase.validate_idp_list(idp_list)
+        IdentityProviderBase.validate_idp_list(idp_list, openshift_version, deployment_type)
         return yaml.safe_dump([idp.to_dict() for idp in idp_list], default_flow_style=False)
 
     @staticmethod
@@ -527,9 +543,30 @@ class FilterModule(object):
                       'openshift-master.kubeconfig']
         return certs
 
+    @staticmethod
+    def oo_htpasswd_users_from_file(file_contents):
+        ''' return a dictionary of htpasswd users from htpasswd file contents '''
+        htpasswd_entries = {}
+        if not isinstance(file_contents, basestring):
+            raise errors.AnsibleFilterError("failed, expects to filter on a string")
+        for line in file_contents.splitlines():
+            user = None
+            passwd = None
+            if len(line) == 0:
+                continue
+            if ':' in line:
+                user, passwd = line.split(':', 1)
+
+            if user is None or len(user) == 0 or passwd is None or len(passwd) == 0:
+                error_msg = "failed, expects each line to be a colon separated string representing the user and passwd"
+                raise errors.AnsibleFilterError(error_msg)
+            htpasswd_entries[user] = passwd
+        return htpasswd_entries
+
 
     def filters(self):
         ''' returns a mapping of filters to methods '''
         return {"translate_idps": self.translate_idps,
                 "validate_pcs_cluster": self.validate_pcs_cluster,
-                "certificates_to_synchronize": self.certificates_to_synchronize}
+                "certificates_to_synchronize": self.certificates_to_synchronize,
+                "oo_htpasswd_users_from_file": self.oo_htpasswd_users_from_file}

@@ -1,4 +1,20 @@
 ---
+- hosts: localhost
+  gather_facts: no
+  tasks:
+  - include_vars: vars.yml
+  - include_vars: cluster_hosts.yml
+  - add_host:
+      name: "{{ item }}"
+      groups: l_oo_all_hosts
+    with_items: g_all_hosts
+
+- hosts: l_oo_all_hosts
+  gather_facts: no
+  tasks:
+  - include_vars: vars.yml
+  - include_vars: cluster_hosts.yml
+
 - name: Populate oo_hosts_to_update group
   hosts: localhost
   connection: local
@@ -13,8 +29,8 @@
       name: "{{ item }}"
       groups: oo_hosts_to_update
       ansible_ssh_user: "{{ deployment_vars[deployment_type].ssh_user }}"
-      ansible_sudo: "{{ deployment_vars[deployment_type].sudo }}"
-    with_items: "{{ g_all_hosts | default([]) }}"
+      ansible_become: "{{ deployment_vars[deployment_type].become }}"
+    with_items: g_all_hosts | default([])
 
 - include: ../../common/openshift-cluster/update_repos_and_packages.yml
 

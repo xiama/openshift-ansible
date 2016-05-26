@@ -6,10 +6,13 @@ Custom filters for use in openshift-ansible
 """
 
 from ansible import errors
+from collections import Mapping
+from distutils.version import LooseVersion
 from operator import itemgetter
 import OpenSSL.crypto
 import os
 import pdb
+import pkg_resources
 import re
 import json
 import yaml
@@ -70,6 +73,42 @@ class FilterModule(object):
         return merged
 
     @staticmethod
+    def oo_merge_hostvars(hostvars, variables, inventory_hostname):
+        """ Merge host and play variables.
+
+            When ansible version is greater than or equal to 2.0.0,
+            merge hostvars[inventory_hostname] with variables (ansible vars)
+            otherwise merge hostvars with hostvars['inventory_hostname'].
+
+            Ex: hostvars={'master1.example.com': {'openshift_variable': '3'},
+                          'openshift_other_variable': '7'}
+                variables={'openshift_other_variable': '6'}
+                inventory_hostname='master1.example.com'
+                returns {'openshift_variable': '3', 'openshift_other_variable': '7'}
+
+                hostvars=<ansible.vars.hostvars.HostVars object> (Mapping)
+                variables={'openshift_other_variable': '6'}
+                inventory_hostname='master1.example.com'
+                returns {'openshift_variable': '3', 'openshift_other_variable': '6'}
+        """
+        if not isinstance(hostvars, Mapping):
+            raise errors.AnsibleFilterError("|failed expects hostvars is dictionary or object")
+        if not isinstance(variables, dict):
+            raise errors.AnsibleFilterError("|failed expects variables is a dictionary")
+        if not isinstance(inventory_hostname, basestring):
+            raise errors.AnsibleFilterError("|failed expects inventory_hostname is a string")
+        # pylint: disable=no-member
+        ansible_version = pkg_resources.get_distribution("ansible").version
+        merged_hostvars = {}
+        if LooseVersion(ansible_version) >= LooseVersion('2.0.0'):
+            merged_hostvars = FilterModule.oo_merge_dicts(hostvars[inventory_hostname],
+                                                          variables)
+        else:
+            merged_hostvars = FilterModule.oo_merge_dicts(hostvars[inventory_hostname],
+                                                          hostvars)
+        return merged_hostvars
+
+    @staticmethod
     def oo_collect(data, attribute=None, filters=None):
         """ This takes a list of dict and collects all attributes specified into a
             list. If filter is specified then we will include all items that
@@ -128,14 +167,14 @@ class FilterModule(object):
                 returns [1, 3]
         """
 
-        if not isinstance(data, dict):
-            raise errors.AnsibleFilterError("|failed expects to filter on a dict")
+        if not isinstance(data, Mapping):
+            raise errors.AnsibleFilterError("|failed expects to filter on a dict or object")
 
         if not isinstance(keys, list):
             raise errors.AnsibleFilterError("|failed expects first param is a list")
 
         # Gather up the values for the list of keys passed in
-        retval = [data[key] for key in keys if data.has_key(key)]
+        retval = [data[key] for key in keys if key in data]
 
         return retval
 
@@ -259,8 +298,11 @@ class FilterModule(object):
 
     @staticmethod
     def oo_split(string, separator=','):
-        """ This splits the input string into a list
+        """ This splits the input string into a list. If the input string is
+        already a list we will return it as is.
         """
+        if isinstance(string, list):
+            return string
         return string.split(separator)
 
     @staticmethod
@@ -296,7 +338,7 @@ class FilterModule(object):
             raise errors.AnsibleFilterError("|failed expects filter_attr is a str or unicode")
 
         # Gather up the values for the list of keys passed in
-        return [x for x in data if x.has_key(filter_attr) and x[filter_attr]]
+        return [x for x in data if filter_attr in x and x[filter_attr]]
 
     @staticmethod
     def oo_oc_nodes_matching_selector(nodes, selector):
@@ -311,6 +353,16 @@ class FilterModule(object):
                           "color": "red"}}}]
                 selector = 'color=green'
                 returns = ['node1.example.com']
+
+                nodes = [{"kind": "Node", "metadata": {"name": "node1.example.com",
+                          "labels": {"kubernetes.io/hostname": "node1.example.com",
+                          "color": "green"}}},
+                         {"kind": "Node", "metadata": {"name": "node2.example.com",
+                          "labels": {"kubernetes.io/hostname": "node2.example.com",
+                          "color": "red"}}}]
+                selector = 'color=green,color=red'
+                returns = ['node1.example.com','node2.example.com']
+
             Args:
                 nodes (list[dict]): list of node definitions
                 selector (str): "label=value" node selector to filter `nodes` by
@@ -323,9 +375,15 @@ class FilterModule(object):
             raise errors.AnsibleFilterError("failed expects selector to be a string")
         if not re.match('.*=.*', selector):
             raise errors.AnsibleFilterError("failed selector does not match \"label=value\" format")
-        label = selector.split('=')[0]
-        value = selector.split('=')[1]
-        return FilterModule.oo_oc_nodes_with_label(nodes, label, value)
+        node_lists = []
+        for node_selector in ''.join(selector.split()).split(','):
+            label = node_selector.split('=')[0]
+            value = node_selector.split('=')[1]
+            node_lists.append(FilterModule.oo_oc_nodes_with_label(nodes, label, value))
+        nodes = set(node_lists[0])
+        for node_list in node_lists[1:]:
+            nodes.intersection_update(node_list)
+        return list(nodes)
 
     @staticmethod
     def oo_oc_nodes_with_label(nodes, label, value):
@@ -634,7 +692,9 @@ class FilterModule(object):
 
     @staticmethod
     def oo_openshift_env(hostvars):
-        ''' Return facts which begin with "openshift_"
+        ''' Return facts which begin with "openshift_" and translate
+            legacy facts to their openshift_env counterparts.
+
             Ex: hostvars = {'openshift_fact': 42,
                             'theyre_taking_the_hobbits_to': 'isengard'}
                 returns  = {'openshift_fact': 42}
@@ -647,6 +707,11 @@ class FilterModule(object):
         for key in hostvars:
             if regex.match(key):
                 facts[key] = hostvars[key]
+
+        migrations = {'openshift_router_selector': 'openshift_hosted_router_selector'}
+        for old_fact, new_fact in migrations.iteritems():
+            if old_fact in facts and new_fact not in facts:
+                facts[new_fact] = facts[old_fact]
         return facts
 
     @staticmethod
@@ -667,21 +732,22 @@ class FilterModule(object):
         if 'hosted' in hostvars['openshift']:
             for component in hostvars['openshift']['hosted']:
                 if 'storage' in hostvars['openshift']['hosted'][component]:
-                    kind = hostvars['openshift']['hosted'][component]['storage']['kind']
-                    create_pv = hostvars['openshift']['hosted'][component]['storage']['create_pv']
+                    params = hostvars['openshift']['hosted'][component]['storage']
+                    kind = params['kind']
+                    create_pv = params['create_pv']
                     if kind != None and create_pv:
                         if kind == 'nfs':
-                            host = hostvars['openshift']['hosted'][component]['storage']['host']
+                            host = params['host']
                             if host == None:
                                 if len(groups['oo_nfs_to_config']) > 0:
                                     host = groups['oo_nfs_to_config'][0]
                                 else:
                                     raise errors.AnsibleFilterError("|failed no storage host detected")
-                            directory = hostvars['openshift']['hosted'][component]['storage']['nfs']['directory']
-                            volume = hostvars['openshift']['hosted'][component]['storage']['volume']['name']
+                            directory = params['nfs']['directory']
+                            volume = params['volume']['name']
                             path = directory + '/' + volume
-                            size = hostvars['openshift']['hosted'][component]['storage']['volume']['size']
-                            access_modes = hostvars['openshift']['hosted'][component]['storage']['access_modes']
+                            size = params['volume']['size']
+                            access_modes = params['access_modes']
                             persistent_volume = dict(
                                 name="{0}-volume".format(volume),
                                 capacity=size,
@@ -690,6 +756,21 @@ class FilterModule(object):
                                     nfs=dict(
                                         server=host,
                                         path=path)))
+                            persistent_volumes.append(persistent_volume)
+                        elif kind == 'openstack':
+                            volume = params['volume']['name']
+                            size = params['volume']['size']
+                            access_modes = params['access_modes']
+                            filesystem = params['openstack']['filesystem']
+                            volume_id = params['openstack']['volumeID']
+                            persistent_volume = dict(
+                                name="{0}-volume".format(volume),
+                                capacity=size,
+                                access_modes=access_modes,
+                                storage=dict(
+                                    cinder=dict(
+                                        fsType=filesystem,
+                                        volumeID=volume_id)))
                             persistent_volumes.append(persistent_volume)
                         else:
                             msg = "|failed invalid storage kind '{0}' for component '{1}'".format(
@@ -794,15 +875,18 @@ class FilterModule(object):
     def oo_image_tag_to_rpm_version(version, include_dash=False):
         """ Convert an image tag string to an RPM version if necessary
             Empty strings and strings that are already in rpm version format
-            are ignored.
+            are ignored. Also remove non semantic version components.
 
             Ex. v3.2.0.10 -> -3.2.0.10
+                v1.2.0-rc1 -> -1.2.0
         """
         if not isinstance(version, basestring):
             raise errors.AnsibleFilterError("|failed expects a string or unicode")
-
+        # TODO: Do we need to make this actually convert v1.2.0-rc1 into 1.2.0-0.rc1
+        # We'd need to be really strict about how we build the RPM Version+Release
         if version.startswith("v"):
             version = version.replace("v", "")
+            version = version.split('-')[0]
 
             if include_dash:
                 version = "-" + version
@@ -840,5 +924,6 @@ class FilterModule(object):
             "oo_image_tag_to_rpm_version": self.oo_image_tag_to_rpm_version,
             "oo_merge_dicts": self.oo_merge_dicts,
             "oo_oc_nodes_matching_selector": self.oo_oc_nodes_matching_selector,
-            "oo_oc_nodes_with_label": self.oo_oc_nodes_with_label
+            "oo_oc_nodes_with_label": self.oo_oc_nodes_with_label,
+            "oo_merge_hostvars": self.oo_merge_hostvars,
         }

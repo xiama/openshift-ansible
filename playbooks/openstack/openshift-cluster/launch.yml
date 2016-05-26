@@ -7,10 +7,6 @@
   vars_files:
   - vars.yml
   tasks:
-  - fail:
-      msg: "Deployment type not supported for OpenStack provider yet"
-    when: deployment_type == 'online'
-
   # TODO: Write an Ansible module for dealing with HEAT stacks
   #       Dealing with the outputs is currently terrible
 
@@ -50,7 +46,7 @@
              -P master_flavor={{ openstack_flavor["master"] }}
              -P node_flavor={{ openstack_flavor["node"] }}
              -P infra_flavor={{ openstack_flavor["infra"] }}
-             -P dns_flavor=m1.small
+             -P dns_flavor={{ openshift_flavor["dns"] }}
              openshift-ansible-{{ cluster_id }}-stack'
 
   - name: Wait for OpenStack Stack readiness
@@ -106,7 +102,7 @@
       hostname: '{{ item[0] }}'
       ansible_ssh_host: '{{ item[2] }}'
       ansible_ssh_user: "{{ deployment_vars[deployment_type].ssh_user }}"
-      ansible_sudo: "{{ deployment_vars[deployment_type].sudo }}"
+      ansible_become: "{{ deployment_vars[deployment_type].become }}"
       groups: 'tag_environment_{{ cluster_env }}, tag_host-type_etcd, tag_sub-host-type_default, tag_clusterid_{{ cluster_id }}'
       openshift_node_labels:
         type: "etcd"
@@ -120,7 +116,7 @@
       hostname: '{{ item[0] }}'
       ansible_ssh_host: '{{ item[2] }}'
       ansible_ssh_user: "{{ deployment_vars[deployment_type].ssh_user }}"
-      ansible_sudo: "{{ deployment_vars[deployment_type].sudo }}"
+      ansible_become: "{{ deployment_vars[deployment_type].become }}"
       groups: 'tag_environment_{{ cluster_env }}, tag_host-type_master, tag_sub-host-type_default, tag_clusterid_{{ cluster_id }}'
       openshift_node_labels:
         type: "master"
@@ -134,7 +130,7 @@
       hostname: '{{ item[0] }}'
       ansible_ssh_host: '{{ item[2] }}'
       ansible_ssh_user: "{{ deployment_vars[deployment_type].ssh_user }}"
-      ansible_sudo: "{{ deployment_vars[deployment_type].sudo }}"
+      ansible_become: "{{ deployment_vars[deployment_type].become }}"
       groups: 'tag_environment_{{ cluster_env }}, tag_host-type_node, tag_sub-host-type_compute, tag_clusterid_{{ cluster_id }}'
       openshift_node_labels:
         type: "compute"
@@ -148,7 +144,7 @@
       hostname: '{{ item[0] }}'
       ansible_ssh_host: '{{ item[2] }}'
       ansible_ssh_user: "{{ deployment_vars[deployment_type].ssh_user }}"
-      ansible_sudo: "{{ deployment_vars[deployment_type].sudo }}"
+      ansible_become: "{{ deployment_vars[deployment_type].become }}"
       groups: 'tag_environment_{{ cluster_env }}, tag_host-type_node, tag_sub-host-type_infra, tag_clusterid_{{ cluster_id }}'
       openshift_node_labels:
         type: "infra"
@@ -162,7 +158,7 @@
       hostname: '{{ parsed_outputs.dns_name }}'
       ansible_ssh_host: '{{ parsed_outputs.dns_floating_ip }}'
       ansible_ssh_user: "{{ deployment_vars[deployment_type].ssh_user }}"
-      ansible_sudo: "{{ deployment_vars[deployment_type].sudo }}"
+      ansible_become: "{{ deployment_vars[deployment_type].become }}"
       groups: '{{ cluster_id }}-dns'
 
   - name: Wait for ssh

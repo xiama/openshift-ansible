@@ -121,7 +121,7 @@ def write_inventory_vars(base_inventory, multiple_masters, proxy):
     base_inventory.write('\n[OSEv3:vars]\n')
     base_inventory.write('ansible_ssh_user={}\n'.format(CFG.settings['ansible_ssh_user']))
     if CFG.settings['ansible_ssh_user'] != 'root':
-        base_inventory.write('ansible_become=true\n')
+        base_inventory.write('ansible_become=yes\n')
     if multiple_masters and proxy is not None:
         base_inventory.write('openshift_master_cluster_method=native\n')
         base_inventory.write("openshift_master_cluster_hostname={}\n".format(proxy.hostname))
@@ -129,10 +129,21 @@ def write_inventory_vars(base_inventory, multiple_masters, proxy):
             "openshift_master_cluster_public_hostname={}\n".format(proxy.public_hostname))
     if CFG.settings.get('master_routingconfig_subdomain', False):
         base_inventory.write(
-            "openshift_master_default_subdomain={}\n".format(CFG.settings['master_routingconfig_subdomain']))
+            "openshift_master_default_subdomain={}\n".format(
+                                                    CFG.settings['master_routingconfig_subdomain']))
     if CFG.settings.get('variant_version', None) == '3.1':
         #base_inventory.write('openshift_image_tag=v{}\n'.format(CFG.settings.get('variant_version')))
         base_inventory.write('openshift_image_tag=v{}\n'.format('3.1.1.6'))
+
+    if CFG.settings.get('openshift_http_proxy', ''):
+        base_inventory.write("openshift_http_proxy={}\n".format(
+                                                            CFG.settings['openshift_http_proxy']))
+    if CFG.settings.get('openshift_https_proxy', ''):
+        base_inventory.write("openshift_https_proxy={}\n".format(
+                                                            CFG.settings['openshift_https_proxy']))
+    if CFG.settings.get('openshift_no_proxy', ''):
+        base_inventory.write("openshift_no_proxy={}\n".format(
+                                                            CFG.settings['openshift_no_proxy']))
 
 
 def write_host(host, inventory, schedulable=None):
@@ -169,7 +180,7 @@ def write_host(host, inventory, schedulable=None):
             if no_pwd_sudo == 1:
                 print 'The atomic-openshift-installer requires sudo access without a password.'
                 sys.exit(1)
-            facts += ' ansible_become=true'
+            facts += ' ansible_become=yes'
 
     inventory.write('{} {}\n'.format(host.connect_to, facts))
 

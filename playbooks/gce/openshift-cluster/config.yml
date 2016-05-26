@@ -1,18 +1,33 @@
 ---
+- hosts: localhost
+  gather_facts: no
+  tasks:
+  - include_vars: vars.yml
+  - include_vars: cluster_hosts.yml
+  - add_host:
+      name: "{{ item }}"
+      groups: l_oo_all_hosts
+      ansible_ssh_user: "{{ deployment_vars[deployment_type].ssh_user }}"
+      ansible_become: "{{ deployment_vars[deployment_type].become }}"
+    with_items: g_all_hosts
+
+- hosts: l_oo_all_hosts
+  gather_facts: no
+  tasks:
+  - include_vars: vars.yml
+  - include_vars: cluster_hosts.yml
+
 - include: ../../common/openshift-cluster/config.yml
-  vars_files:
-  - ../../gce/openshift-cluster/vars.yml
-  - ../../gce/openshift-cluster/cluster_hosts.yml
   vars:
     g_ssh_user: "{{ deployment_vars[deployment_type].ssh_user }}"
-    g_sudo: "{{ deployment_vars[deployment_type].sudo }}"
+    g_sudo: "{{ deployment_vars[deployment_type].become }}"
     g_nodeonmaster: true
     openshift_cluster_id: "{{ cluster_id }}"
     openshift_debug_level: "{{ debug_level }}"
     openshift_deployment_type: "{{ deployment_type }}"
     openshift_hostname: "{{ gce_private_ip }}"
     openshift_registry_selector: 'type=infra'
-    openshift_router_selector: 'type=infra'
+    openshift_hosted_router_selector: 'type=infra'
     openshift_infra_nodes: "{{ g_infra_hosts }}"
     openshift_master_cluster_method: 'native'
     openshift_use_openshift_sdn: "{{ lookup('oo_option', 'use_openshift_sdn') }}"

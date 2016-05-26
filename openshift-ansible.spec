@@ -5,7 +5,7 @@
 }
 
 Name:           openshift-ansible
-Version:        3.0.81
+Version:        3.0.93
 Release:        1%{?dist}
 Summary:        Openshift and Atomic Enterprise Ansible
 License:        ASL 2.0
@@ -15,6 +15,7 @@ BuildArch:      noarch
 
 Requires:      ansible >= 1.9.4
 Requires:      python2
+Requires:      openshift-ansible-docs = %{version}-%{release}
 
 %description
 Openshift and Atomic Enterprise Ansible
@@ -37,46 +38,27 @@ popd
 mkdir -p %{buildroot}%{_datadir}/%{name}
 mkdir -p %{buildroot}%{_datadir}/ansible/%{name}
 mkdir -p %{buildroot}%{_datadir}/ansible_plugins
+cp -rp library %{buildroot}%{_datadir}/ansible/%{name}/
 
 # openshift-ansible-bin install
 mkdir -p %{buildroot}%{_bindir}
 mkdir -p %{buildroot}%{python_sitelib}/openshift_ansible
 mkdir -p %{buildroot}/etc/bash_completion.d
 mkdir -p %{buildroot}/etc/openshift_ansible
-cp -p bin/{ossh,oscp,opssh,opscp,ohi} %{buildroot}%{_bindir}
-cp -pP bin/openshift_ansible/* %{buildroot}%{python_sitelib}/openshift_ansible
-cp -p bin/ossh_bash_completion %{buildroot}/etc/bash_completion.d
-cp -p bin/openshift_ansible.conf.example %{buildroot}/etc/openshift_ansible/openshift_ansible.conf
 # Fix links
-rm -f %{buildroot}%{python_sitelib}/openshift_ansible/multi_inventory.py
 rm -f %{buildroot}%{python_sitelib}/openshift_ansible/aws
 rm -f %{buildroot}%{python_sitelib}/openshift_ansible/gce
-ln -sf %{_datadir}/ansible/inventory/multi_inventory.py %{buildroot}%{python_sitelib}/openshift_ansible/multi_inventory.py
-ln -sf %{_datadir}/ansible/inventory/aws %{buildroot}%{python_sitelib}/openshift_ansible/aws
-ln -sf %{_datadir}/ansible/inventory/gce %{buildroot}%{python_sitelib}/openshift_ansible/gce
 
 # openshift-ansible-docs install
-# -docs are currently just %doc, no install needed
-
-# openshift-ansible-inventory install
-mkdir -p %{buildroot}/etc/ansible
-mkdir -p %{buildroot}%{_datadir}/ansible/inventory
-mkdir -p %{buildroot}%{_datadir}/ansible/inventory/aws
-mkdir -p %{buildroot}%{_datadir}/ansible/inventory/gce
-cp -p inventory/multi_inventory.py %{buildroot}%{_datadir}/ansible/inventory
-cp -p inventory/multi_inventory.yaml.example %{buildroot}/etc/ansible/multi_inventory.yaml
-cp -p inventory/aws/hosts/ec2.py %{buildroot}%{_datadir}/ansible/inventory/aws
-cp -p inventory/gce/hosts/gce.py %{buildroot}%{_datadir}/ansible/inventory/gce
+# Install example inventory into docs/examples
+mkdir -p docs/example-inventories
+cp inventory/byo/* docs/example-inventories/
 
 # openshift-ansible-playbooks install
 cp -rp playbooks %{buildroot}%{_datadir}/ansible/%{name}/
 
 # openshift-ansible-roles install
 cp -rp roles %{buildroot}%{_datadir}/ansible/%{name}/
-
-# openshift-ansible-zabbix install (standalone lib_zabbix library)
-mkdir -p %{buildroot}%{_datadir}/ansible/zabbix
-cp -rp roles/lib_zabbix/library/* %{buildroot}%{_datadir}/ansible/zabbix/
 
 # openshift-ansible-filter-plugins install
 cp -rp filter_plugins %{buildroot}%{_datadir}/ansible_plugins/
@@ -97,42 +79,8 @@ popd
 %files
 %doc LICENSE.md README*
 %dir %{_datadir}/ansible/%{name}
-
-# ----------------------------------------------------------------------------------
-# openshift-ansible-bin subpackage
-# ----------------------------------------------------------------------------------
-%package bin
-Summary:       Openshift and Atomic Enterprise Ansible Scripts for working with metadata hosts
-Requires:      %{name} = %{version}
-Requires:      %{name}-inventory = %{version}
-Requires:      %{name}-playbooks = %{version}
-BuildRequires: python2-devel
-BuildArch:     noarch
-
-%description bin
-Scripts to make it nicer when working with hosts that are defined only by metadata.
-
-%files bin
-%{_bindir}/*
-%exclude %{_bindir}/atomic-openshift-installer
-%{python_sitelib}/openshift_ansible/
-/etc/bash_completion.d/*
-%config(noreplace) /etc/openshift_ansible/
-
-
-# ----------------------------------------------------------------------------------
-# openshift-ansible-zabbix subpackage
-# ----------------------------------------------------------------------------------
-%package zabbix
-Summary:       Openshift and Atomic Enterprise Ansible Zabbix library
-Requires:      python-openshift-tools-zbxapi
-BuildArch:     noarch
-
-%description zabbix
-Python library for interacting with Zabbix with Ansible.
-
-%files zabbix
-%{_datadir}/ansible/zabbix
+%{_datadir}/ansible/%{name}/library
+%ghost %{_datadir}/ansible/%{name}/playbooks/common/openshift-master/library.rpmmoved
 
 # ----------------------------------------------------------------------------------
 # openshift-ansible-docs subpackage
@@ -147,47 +95,6 @@ BuildArch:     noarch
 
 %files docs
 %doc  docs
-
-# ----------------------------------------------------------------------------------
-# openshift-ansible-inventory subpackage
-# ----------------------------------------------------------------------------------
-%package inventory
-Summary:       Openshift and Atomic Enterprise Ansible Inventories
-Requires:      %{name} = %{version}
-BuildArch:     noarch
-
-%description inventory
-Ansible Inventories used with the openshift-ansible scripts and playbooks.
-
-%files inventory
-%config(noreplace) /etc/ansible/*
-%dir %{_datadir}/ansible/inventory
-%{_datadir}/ansible/inventory/multi_inventory.py*
-
-%package inventory-aws
-Summary:       Openshift and Atomic Enterprise Ansible Inventories for AWS
-Requires:      %{name}-inventory = %{version}
-Requires:      python-boto
-BuildArch:     noarch
-
-%description inventory-aws
-Ansible Inventories for AWS used with the openshift-ansible scripts and playbooks.
-
-%files inventory-aws
-%{_datadir}/ansible/inventory/aws/ec2.py*
-
-%package inventory-gce
-Summary:       Openshift and Atomic Enterprise Ansible Inventories for GCE
-Requires:      %{name}-inventory = %{version}
-Requires:      python-libcloud >= 0.13
-BuildArch:     noarch
-
-%description inventory-gce
-Ansible Inventories for GCE used with the openshift-ansible scripts and playbooks.
-
-%files inventory-gce
-%{_datadir}/ansible/inventory/gce/gce.py*
-
 
 # ----------------------------------------------------------------------------------
 # openshift-ansible-playbooks subpackage
@@ -206,11 +113,30 @@ BuildArch:     noarch
 %files playbooks
 %{_datadir}/ansible/%{name}/playbooks
 
+# We moved playbooks/common/openshift-master/library up to the top and replaced
+# it with a symlink. RPM doesn't handle this so we have to do some pre-transaction
+# magic. See https://fedoraproject.org/wiki/Packaging:Directory_Replacement
+%pretrans playbooks -p <lua>
+-- Define the path to directory being replaced below.
+-- DO NOT add a trailing slash at the end.
+path = "/usr/share/ansible/openshift-ansible/playbooks/common/openshift-master/library"
+st = posix.stat(path)
+if st and st.type == "directory" then
+  status = os.rename(path, path .. ".rpmmoved")
+  if not status then
+    suffix = 0
+    while not status do
+      suffix = suffix + 1
+      status = os.rename(path .. ".rpmmoved", path .. ".rpmmoved." .. suffix)
+    end
+    os.rename(path, path .. ".rpmmoved")
+  end
+end
 
+%package roles
 # ----------------------------------------------------------------------------------
 # openshift-ansible-roles subpackage
 # ----------------------------------------------------------------------------------
-%package roles
 Summary:       Openshift and Atomic Enterprise Ansible roles
 Requires:      %{name} = %{version}
 Requires:      %{name}-lookup-plugins = %{version}
@@ -279,6 +205,212 @@ Atomic OpenShift Utilities includes
 
 
 %changelog
+* Tue May 24 2016 Troy Dawson <tdawson@redhat.com> 3.0.93-1
+- Fixup spec file (tdawson@redhat.com)
+
+* Tue May 24 2016 Troy Dawson <tdawson@redhat.com> 3.0.92-1
+-  Conditionally bind mount /usr/bin/docker-current when it is present (#1941)
+  (sdodson@redhat.com)
+
+* Tue May 24 2016 Troy Dawson <tdawson@redhat.com> 3.0.91-1
+- Removed the echo line and replaced it with inline comment. To keep 99-origin-
+  dns.sh from adding a new line in /etc/resolv.conf everytime the
+  NetworkManager dispatcher script is executed. (jnordell@redhat.com)
+- Extend multiple login provider check to include origin. (abutcher@redhat.com)
+- Allow multiple login providers post 3.2. (abutcher@redhat.com)
+- Make rhel_subscribe role able to subscribe for OSE 3.2 (lhuard@amadeus.com)
+- Ensure yum-utils installed. (abutcher@redhat.com)
+- Remove newline from docker_options template string. (abutcher@redhat.com)
+- Use systemctl restart docker instead of ansible service.
+  (dgoodwin@redhat.com)
+- Use cluster hostname while generating certificate on the master nodes
+  (vishal.patil@nuagenetworks.net)
+- Fix playbooks/openshift-master/library move to symlink (sdodson@redhat.com)
+- Task "Update router image to current version" failed, if router not in
+  default namespace (jkroepke@users.noreply.github.com)
+- docker-current was missing from the containerized atomic-openshift-
+  node.service file (maci.stgn@gmail.com)
+- fixed issue with blank spaces instead commas as variables template separators
+  (j.david.nieto@gmail.com)
+- Refactor where we compute no_proxy hostnames (sdodson@redhat.com)
+- Fix for ansible v2 (sdodson@redhat.com)
+- Fix rhel_subscribe (sdodson@redhat.com)
+- remove interpolated g_all_hosts with_items arg from upgrade playbooks
+  (cboggs@rallydev.com)
+- Set openshift.common.hostname early in playbook execution.
+  (abutcher@redhat.com)
+- Fix 'recursive loop detected in template string' for upgrading variable.
+  (abutcher@redhat.com)
+- a-o-i: No proxy questions for 3.0/3.1 (smunilla@redhat.com)
+- Fix minor upgrades in 3.1 (sdodson@redhat.com)
+- Don't pull cli image when we're not containerized (sdodson@redhat.com)
+- Check consumed pools prior to attaching. (abutcher@redhat.com)
+
+* Mon May 16 2016 Troy Dawson <tdawson@redhat.com> 3.0.90-1
+- Fixes for openshift_docker_hosted_registry_insecure var.
+  (dgoodwin@redhat.com)
+- Move latest to v1.2 (sdodson@redhat.com)
+- Sync latest content (sdodson@redhat.com)
+- Update default max-pods parameter (mwysocki@redhat.com)
+- Allow overriding servingInfo.maxRequestsInFlight via
+  openshift_master_max_requests_inflight. (abutcher@redhat.com)
+- update logging and metrics deployer templates (lmeyer@redhat.com)
+- Update default max-pods parameter (maci.stgn@gmail.com)
+- Block upgrading w/ ansible v2. (abutcher@redhat.com)
+- Fixed openvswitch not upgrading. (dgoodwin@redhat.com)
+- Do not upgrade containers to latest avail during a normal config run.
+  (dgoodwin@redhat.com)
+- Update StringIO import for py2/3 compat. (abutcher@redhat.com)
+- Fix mistaken quotes on proxy sysconfig variables. (dgoodwin@redhat.com)
+- Sync comments with origin pr (sdodson@redhat.com)
+- Use IP4_NAMESERVERS rather than DHCP4_DOMAIN_NAME_SERVERS
+  (sdodson@redhat.com)
+- Remove vars_files on play includes for upgrade playbooks.
+  (abutcher@redhat.com)
+- Document oauth token config inventory vars. (dgoodwin@redhat.com)
+- Why is the node failing to start (sdodson@redhat.com)
+- Move os_firewall out of openshift_common (sdodson@redhat.com)
+- Remove old unused firewall rules (sdodson@redhat.com)
+- Fix firewall rules (sdodson@redhat.com)
+- Remove double evaluate_groups include. (abutcher@redhat.com)
+- a-o-i: Write proxy variables (smunilla@redhat.com)
+- Add support for Openstack based persistent volumes (sbaubeau@redhat.com)
+- Fixes for flannel configuration. (abutcher@redhat.com)
+- Initialize facts for all hosts. (abutcher@redhat.com)
+- Fix version (sdodson@redhat.com)
+- Fix cli_docker_additional_registries being erased during upgrade.
+  (dgoodwin@redhat.com)
+- Unmask atomic-openshift-master on uninstall (sdodson@redhat.com)
+- Add *.retry to gitignore. (abutcher@redhat.com)
+- Move modify_yaml up into top level library directory (sdodson@redhat.com)
+- Enable dnsmasq on all hosts (sdodson@redhat.com)
+- Fixed the credentials (vishal.patil@nuagenetworks.net)
+- Remove vars_files on play includes for byo, scaleup and restart playbooks.
+  (abutcher@redhat.com)
+- Ensure ansible version greater than 1.9.4 (abutcher@redhat.com)
+- Add oo_merge_hostvars filter for merging host & play variables.
+  (abutcher@redhat.com)
+- Replace hostvars with vars for openshift env facts when ansible >= v2.
+  (abutcher@redhat.com)
+- Add system:image-auditor role to ManageIQ SA (mtayer@redhat.com)
+- Added extra install dependency on OSX (leenders.gert@gmail.com)
+- Check and unmask iptables/firewalld. (abutcher@redhat.com)
+- Default os_firewall_use_firewalld to false in os_firewall and remove
+  overrides. (abutcher@redhat.com)
+- listen on all interfaces (sdodson@redhat.com)
+- Fix configuration of dns_ip (sdodson@redhat.com)
+- Fix markdown in roles/openshift_metrics/README.md (cben@redhat.com)
+- use stat module instead of shell module and ls to check for rpm-ostree
+  (jdetiber@redhat.com)
+-  fix openstack template (sjenning@redhat.com)
+- Remove duplicate oauth_template fact. (abutcher@redhat.com)
+- Cleanup various deprecation warnings. (abutcher@redhat.com)
+- Make NetworkManager failure friendlier (sdodson@redhat.com)
+- README Updates (detiber@gmail.com)
+- Remove deprecated online playbooks/roles (jdetiber@redhat.com)
+- fix up variable references remove "online" support from bin/cluster
+  (jdetiber@redhat.com)
+- Remove Ops specific ansible-tower aws playbooks (jdetiber@redhat.com)
+- Fix inventory syntaxe (florian.lambert@enovance.com)
+- Add openshift_docker_hosted_registry_insecure option (andrew@andrewklau.com)
+- additional fixes (jdetiber@redhat.com)
+- Fix templating issue with logging role (jdetiber@redhat.com)
+- BuildDefaults are a kube admission controller not an openshift admission
+  controller (sdodson@redhat.com)
+- a-o-i: More friendly proxy questions (smunilla@redhat.com)
+- update tenand_id typo in example file (jialiu@redhat.com)
+- Update hosts.ose.example (jialiu@redhat.com)
+- update tenand_id typo in example file (jialiu@redhat.com)
+- Update repos per inventory before upgrading (sdodson@redhat.com)
+- Fix openshift_generate_no_proxy_hosts boolean (sdodson@redhat.com)
+- Fix openshift_generate_no_proxy_hosts examples (sdodson@redhat.com)
+- Fix inventory properties with raw booleans, again... (dgoodwin@redhat.com)
+- Allow containerized deployment of dns role (jprovazn@redhat.com)
+
+* Mon May 09 2016 Brenton Leanhardt <bleanhar@redhat.com> 3.0.89-1
+- Use yum swap to downgrade docker (sdodson@redhat.com)
+
+* Fri May 06 2016 Brenton Leanhardt <bleanhar@redhat.com> 3.0.88-1
+- Open port 53 whenever we're unsure of version (sdodson@redhat.com)
+- Fix unsafe boolean handling on use_dnsmasq (sdodson@redhat.com)
+
+* Wed Apr 27 2016 Troy Dawson <tdawson@redhat.com> 3.0.87-1
+- a-o-i-: Allow empty proxy (smunilla@redhat.com)
+- a-o-i: Populate groups for openshift_facts (smunilla@redhat.com)
+- Replace sudo with become when accessing deployment_vars.
+  (abutcher@redhat.com)
+- Port lookup plugins to ansible v2. (abutcher@redhat.com)
+- Add masterConfig.volumeConfig.dynamicProvisioningEnabled (sdodson@redhat.com)
+
+* Tue Apr 26 2016 Brenton Leanhardt <bleanhar@redhat.com> 3.0.86-1
+- Don't set empty HTTP_PROXY, HTTPS_PROXY, NO_PROXY values (sdodson@redhat.com)
+- a-o-i tests: Update attended tests for proxy (smunilla@redhat.com)
+- Move portal_net from openshift_common to openshift_facts.
+  (abutcher@redhat.com)
+- Apply openshift_common to all masters prior to creating certificates for
+  portal_net. (abutcher@redhat.com)
+- Access portal_net in common facts. (abutcher@redhat.com)
+- Add support for setting identity provider custom values (jdetiber@redhat.com)
+- port filter_plugins to ansible2 (tob@butter.sh)
+- a-o-i: Update prompt when asking for proxy (smunilla@redhat.com)
+- a-o-i: UI additions for proxies (smunilla@redhat.com)
+
+* Mon Apr 25 2016 Troy Dawson <tdawson@redhat.com> 3.0.85-1
+- Fix backward compat for osm_default_subdomain (jdetiber@redhat.com)
+- Replace deprecated sudo with become. (abutcher@redhat.com)
+- Fix image version handling for v1.2.0-rc1 (sdodson@redhat.com)
+- Pod must be recreated for the upgrade (bleanhar@redhat.com)
+- openshift_etcd_facts should rely on openshift_facts not openshift_common
+  (jdetiber@redhat.com)
+- Sort and de-dupe no_proxy list (sdodson@redhat.com)
+- openshift-metrics: adding duration and resolution options
+  (efreiber@redhat.com)
+- Changed service account creation to ansible (vishal.patil@nuagenetworks.net)
+- As per https://github.com/openshift/openshift-
+  ansible/issues/1795#issuecomment-213873564, renamed openshift_node_dnsmasq to
+  openshift_use_dnsmasq where applicable. Fixes 1795 (donovan@switchbit.io)
+- Add global proxy configuration (sdodson@redhat.com)
+- remove duplicate register: (tob@butter.sh)
+
+* Fri Apr 22 2016 Troy Dawson <tdawson@redhat.com> 3.0.84-1
+- Fix for docker not present (jdetiber@redhat.com)
+- Reconcile roles in additive-only mode on upgrade (jliggitt@redhat.com)
+- Set etcd_hostname and etcd_ip for masters w/ external etcd.
+  (abutcher@redhat.com)
+
+* Thu Apr 21 2016 Troy Dawson <tdawson@redhat.com> 3.0.83-1
+- a-o-i: Correct bug with default storage host (smunilla@redhat.com)
+- Only add new sccs (bleanhar@redhat.com)
+- Fix bug after portal_net move from master to common role.
+  (dgoodwin@redhat.com)
+- Sync latest content (sdodson@redhat.com)
+- Use xpaas 1.3.0-1, use enterprise content for metrics (sdodson@redhat.com)
+- Support configurable admin user and password for the enterprise Prefix
+  changes for admin and password with nuage_master (abhat@nuagenetworks.net)
+
+* Wed Apr 20 2016 Troy Dawson <tdawson@redhat.com> 3.0.82-1
+- Use a JSON list for docker log options. (dgoodwin@redhat.com)
+- Fix legacy cli_docker_* vars not migrating. (dgoodwin@redhat.com)
+- Fix use of older image tag version during upgrade. (dgoodwin@redhat.com)
+- Remove etcd_interface variable. Remove openshift_docker dependency from the
+  etcd role. (abutcher@redhat.com)
+- Use openshift_hostname/openshift_ip values for etcd configuration and
+  certificates. (abutcher@redhat.com)
+- added new openshift-metrics service (j.david.nieto@gmail.com)
+- Translate legacy facts within the oo_openshift_env filter.
+  (abutcher@redhat.com)
+- Remove empty facts from nested dictionaries. (abutcher@redhat.com)
+- Fix router selector fact migration and match multiple selectors when counting
+  nodes. (abutcher@redhat.com)
+- Fixing the spec for PR 1734 (bleanhar@redhat.com)
+- Add openshift_use_dnsmasq (sdodson@redhat.com)
+- Promote portal_net to openshift.common, add kube_svc_ip (sdodson@redhat.com)
+- Add example inventories to docs, install docs by default (sdodson@redhat.com)
+- Fix use of JSON inventory vars with raw booleans. (dgoodwin@redhat.com)
+- cleanup roles after roles move to openshift-tools (jdiaz@redhat.com)
+- Reference Setup for Origin and Ose from up-to-date docs.openshift.[com|org]
+  instead of local README_[origin|OSE].md (jchaloup@redhat.com)
+
 * Mon Apr 18 2016 Brenton Leanhardt <bleanhar@redhat.com> 3.0.81-1
 - IMAGE_PREFIX=openshift3/ for enterprise logging/metrics (sdodson@redhat.com)
 - a-o-i: Don't assume storage on 1st master (smunilla@redhat.com)

@@ -9,13 +9,6 @@
     role: "{{ item.role }}"
     local_facts: "{{ item.local_facts }}"
   with_items:
-  - role: common
-    local_facts:
-      # TODO: Replace this with a lookup or filter plugin.
-      # TODO: Move this to the node role
-      dns_ip: "{{ openshift_dns_ip
-                  | default(openshift_master_cluster_vip
-                  | default(None if openshift.common.version_gte_3_1_or_1_1 | bool else openshift_node_first_master_ip | default(None, true), true), true) }}"
   - role: node
     local_facts:
       annotations: "{{ openshift_node_annotations | default(none) }}"
@@ -32,6 +25,7 @@
       ovs_image: "{{ osn_ovs_image | default(None) }}"
       proxy_mode: "{{ openshift_node_proxy_mode | default('iptables') }}"
       local_quota_per_fsgroup: "{{ openshift_node_local_quota_per_fsgroup | default(None) }}"
+      dns_ip: "{{ openshift_dns_ip | default(none) | get_dns_ip(hostvars[inventory_hostname])}}"
 
 # We have to add tuned-profiles in the same transaction otherwise we run into depsolving
 # problems because the rpms don't pin the version properly. This was fixed in 3.1 packaging.
@@ -58,8 +52,9 @@
 
 - name: Reload systemd units
   command: systemctl daemon-reload
-  when: openshift.common.is_containerized | bool and ( ( install_node_result  | changed )
-    or ( install_ovs_sysconfig | changed ) )
+  when: openshift.common.is_containerized | bool and (install_node_result | changed or install_ovs_sysconfig | changed or install_node_dep_result | changed)
+  notify:
+  - restart node
 
 - name: Start and enable openvswitch docker service
   service: name=openvswitch.service enabled=yes state=started
@@ -118,6 +113,16 @@
 - name: Start and enable node
   service: name={{ openshift.common.service_type }}-node enabled=yes state=started
   register: node_start_result
+  ignore_errors: yes
+
+- name: Check logs on failure
+  command: journalctl -xe
+  register: node_failure
+  when: node_start_result | failed
+
+- name: Dump failure information
+  debug: var=node_failure
+  when: node_start_result | failed
 
 - set_fact:
     node_service_status_changed: "{{ node_start_result | changed }}"

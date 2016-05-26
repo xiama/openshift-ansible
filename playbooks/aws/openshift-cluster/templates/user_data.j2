@@ -1,30 +1,12 @@
 #cloud-config
-{% if type == 'etcd' and 'etcd' in volume_defs[type] %}
-cloud_config_modules:
-- disk_setup
-- mounts
-
-mounts:
-- [ xvdb, /var/lib/etcd, xfs, "defaults" ]
-
-disk_setup:
-  xvdb:
-    table_type: mbr
-    layout: True
-
-fs_setup:
-- label: etcd_storage
-  filesystem: xfs
-  device: /dev/xvdb
-  partition: auto
-{% endif %}
-
 {% if type in ['node', 'master'] and 'docker' in volume_defs[type] %}
 mounts:
 - [ xvdb ]
 - [ ephemeral0 ]
+{% endif %}
 
 write_files:
+{% if type in ['node', 'master'] and 'docker' in volume_defs[type] %}
 - content: |
     DEVS=/dev/xvdb
     VG=docker_vg
@@ -32,19 +14,7 @@ write_files:
   owner: root:root
   permissions: '0644'
 {% endif %}
-
-{% if deployment_type == 'online' %}
-devices: ['/var'] # Workaround for https://bugs.launchpad.net/bugs/1455436
-
-disable_root: 0
-growpart:
-  mode: auto
-  devices: ['/var']
-runcmd:
-- xfs_growfs /var
-{% endif %}
-
-{% if deployment_vars[deployment_type].sudo %}
+{% if deployment_vars[deployment_type].become | bool %}
 - path: /etc/sudoers.d/99-{{ deployment_vars[deployment_type].ssh_user }}-cloud-init-requiretty
   permissions: 440
   content: |
